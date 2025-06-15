@@ -73,6 +73,6 @@ Do **not** use this project on networks without **explicit permission**.
 
 ## 👨‍💻 Author
 
-Made with 💡 by Abhijith H  
+Made with 💡 by Abhijith H Nair
 Feel free to contribute or fork this project on GitHub!
 
