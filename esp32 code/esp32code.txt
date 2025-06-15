@@ -1,0 +1,133 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include "esp_wifi.h" // Needed for esp_wifi_80211_tx
+
+const char* ssid = "esptest";
+const char* password = "12345678";
+
+WebServer server(80);
+String lastScan = "[]";
+bool beaconSpamActive = false;
+
+
+
+uint8_t beaconPacket[128] = {
+  0x80, 0x00,                         // Beacon frame type
+  0x00, 0x00,                         // Duration
+  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, // Destination: broadcast
+  0x01, 0x02, 0x03, 0x04, 0x05, 0x06, // Source MAC
+  0x01, 0x02, 0x03, 0x04, 0x05, 0x06, // BSSID
+  0xc0, 0x6c,                         // Seq/Frag
+  // Timestamp
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x64, 0x00,                         // Beacon interval
+  0x01, 0x04,                         // Capability info
+  // SSID
+  0x00,                               // SSID parameter set
+  0x08,                               // SSID length
+  'A', 'I', 'R', 'H', 'E', 'X', '_', 'U', // SSID
+  // Supported rates
+  0x01, 0x08, 0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24,
+  // DS Parameter set (channel)
+  0x03, 0x01, 0x01
+};
+
+String getEncryptionName(wifi_auth_mode_t auth) {
+  switch (auth) {
+    case WIFI_AUTH_OPEN: return "OPEN";
+    case WIFI_AUTH_WEP: return "WEP";
+    case WIFI_AUTH_WPA_PSK: return "WPA";
+    case WIFI_AUTH_WPA2_PSK: return "WPA2";
+    case WIFI_AUTH_WPA_WPA2_PSK: return "WPA+WPA2";
+    case WIFI_AUTH_WPA2_ENTERPRISE: return "WPA2-EAP";
+    case WIFI_AUTH_WPA3_PSK: return "WPA3";
+    case WIFI_AUTH_WPA2_WPA3_PSK: return "WPA2+WPA3";
+    case WIFI_AUTH_WAPI_PSK: return "WAPI";
+    default: return "UNKNOWN";
+  }
+}
+
+void scanNetworks() {
+  int n = WiFi.scanNetworks();
+  String json = "[";
+  for (int i = 0; i < n; i++) {
+    String enc = getEncryptionName(WiFi.encryptionType(i));
+    json += "{\"ssid\":\"" + WiFi.SSID(i) + "\",";
+    json += "\"rssi\":" + String(WiFi.RSSI(i)) + ",";
+    json += "\"mac\":\"" + WiFi.BSSIDstr(i) + "\",";
+    json += "\"enc\":\"" + enc + "\"}";
+    if (i < n - 1) json += ",";
+  }
+  json += "]";
+  lastScan = json;
+}
+
+void handleScanRequest() {
+  for (int i = 0; i < 4; i++) {
+    scanNetworks();
+    delay(500);
+  }
+  server.send(200, "application/json", lastScan);
+}
+
+void sendBeacon() {
+  // Randomize MAC
+  for (int i = 10; i < 16; i++) {
+    beaconPacket[i] = random(0, 256);
+  }
+
+  // Randomize SSID after "FREE_"
+  for (int i = 38; i < 46; i++) {
+    if (i >= 43) {
+      beaconPacket[i] = random(33, 126);
+    }
+  }
+
+  // Random channel (1-11)
+  beaconPacket[68] = random(1, 12);
+
+  // Send beacon frame
+  esp_wifi_80211_tx(WIFI_IF_AP, beaconPacket, sizeof(beaconPacket), false);
+
+   // Blink
+  Serial.print(".");
+}
+
+void setup() {
+  Serial.begin(115200);
+ 
+  WiFi.mode(WIFI_AP_STA);
+  // WiFi.mode(WIFI_STA); // STA mode needed for scan
+  WiFi.begin(ssid, password);
+  WiFi.softAP("espbeacon", "12345678");
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected! IP: " + WiFi.localIP().toString());
+
+  server.on("/scan", handleScanRequest);
+  server.on("/start", []() {
+    beaconSpamActive = true;
+    
+    server.send(200, "text/plain", "Beacon spam started");
+  });
+  server.on("/stop", []() {
+    beaconSpamActive = false;
+    
+    server.send(200, "text/plain", "Beacon spam stopped");
+  });
+
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+
+  if (beaconSpamActive) {
+    sendBeacon();
+    delay(20); // Spam rate
+  }
+}
