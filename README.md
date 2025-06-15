@@ -55,7 +55,15 @@
 - Required libraries: `WiFi.h`, `WebServer.h`, `esp_wifi.h`
 
 ---
+## 🔧 Future Updates
 
+- 🌐 **Web UI Support**  
+  A full-featured web interface is in development to control AirHex from any **mobile** or **PC browser**.
+
+- 💥 **Deauther Feature**  
+  If a supported ESP32 variant is available, full deauthentication attack support will be added.
+
+---
 ## ⚠️ Disclaimer
 
 This project is created for **learning, testing, and ethical cybersecurity research** only.  
